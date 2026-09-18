@@ -40,9 +40,10 @@ static void IPStoreChanged(SCDynamicStoreRef store, CFArrayRef keys, void *info)
     __weak typeof(self) weakSelf = self;
 
     // Hardware polling also detects an adapter with no cable link.
-    _timer = [NSTimer scheduledTimerWithTimeInterval:3 repeats:YES block:^(NSTimer *timer) {
+    _timer = [NSTimer timerWithTimeInterval:3 repeats:YES block:^(NSTimer *timer) {
         [weakSelf refresh];
     }];
+    [NSRunLoop.mainRunLoop addTimer:_timer forMode:NSRunLoopCommonModes];
     [self refresh];
 }
 
@@ -68,7 +69,8 @@ static void IPStoreChanged(SCDynamicStoreRef store, CFArrayRef keys, void *info)
     for (NSUInteger i = 0; !changed && i < adapters.count; i++) {
         IPAdapterSnapshot *current = adapters[i];
         IPAdapterSnapshot *previous = _adapters[i];
-        changed = ![current sameConfiguration:previous] || current.linkActive != previous.linkActive
+        changed = ![current sameConfiguration:previous] || current.isWiFi != previous.isWiFi
+            || current.linkActive != previous.linkActive
             || ![current.activeAddresses isEqual:previous.activeAddresses]
             || ![current.serviceName isEqual:previous.serviceName];
     }

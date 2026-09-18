@@ -3,7 +3,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-// Exclude internal USB device functions from the attached Ethernet interfaces.
+// Exclude internal USB device functions from the attached network interfaces.
 FOUNDATION_EXPORT BOOL IPIsUSBDeviceNetworkPath(NSArray<NSString *> *classes);
 
 @interface IPAdapterDiscovery : NSObject

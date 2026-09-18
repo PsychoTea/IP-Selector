@@ -79,6 +79,7 @@
 {
     IPApplyRequest *request = [IPApplyRequest new];
     request.expected = IPTestAdapter();
+    request.expected.wiFi = YES;
     request.preset = IPTestPreset();
     NSError *error;
     NSData *data = [NSKeyedArchiver archivedDataWithRootObject:request requiringSecureCoding:YES
@@ -90,9 +91,59 @@
         [NSKeyedUnarchiver unarchivedObjectOfClass:IPApplyRequest.class fromData:data error:&error];
 
     XCTAssertNotNil(decoded);
+    XCTAssertTrue(decoded.expected.isWiFi);
     XCTAssertTrue([decoded.expected sameConfiguration:request.expected]);
     XCTAssertEqualObjects(decoded.preset.JSON, request.preset.JSON);
     XCTAssertNotNil(IPHelperInterface());
+}
+
+- (void)testConnectionRequiresLinkAndActiveIPv4Address
+{
+    IPAdapterSnapshot *adapter = IPTestAdapter();
+    adapter.linkActive = YES;
+    XCTAssertEqual(adapter.connectionStatus, IPConnectionStatusNotConnected);
+
+    adapter.activeAddresses = @[@"0.0.0.0", @"bad", @"127.0.0.1", @"::1"];
+    XCTAssertEqual(adapter.connectionStatus, IPConnectionStatusNotConnected);
+    adapter.activeAddresses = @[@"192.168.10.20"];
+    XCTAssertEqual(adapter.connectionStatus, IPConnectionStatusConnected);
+    adapter.linkActive = NO;
+    XCTAssertEqual(adapter.connectionStatus, IPConnectionStatusNotConnected);
+}
+
+- (void)testAutomaticLinkLocalAddressIsSelfAssigned
+{
+    IPAdapterSnapshot *adapter = IPTestAdapter();
+    adapter.linkActive = YES;
+    adapter.activeAddresses = @[@"169.254.10.20"];
+    XCTAssertEqual(adapter.connectionStatus, IPConnectionStatusSelfAssigned);
+    adapter.activeAddresses = @[@"169.254.10.20", @"10.0.0.20"];
+    XCTAssertEqual(adapter.connectionStatus, IPConnectionStatusConnected);
+    adapter.activeAddresses = @[@"169.254.10.20"];
+    adapter.linkActive = NO;
+    XCTAssertEqual(adapter.connectionStatus, IPConnectionStatusNotConnected);
+}
+
+- (void)testManualConfigurationNeedsAnActiveAddress
+{
+    IPAdapterSnapshot *adapter = IPTestAdapter();
+    adapter.linkActive = YES;
+    adapter.ipv4 = IPDesiredIPv4(adapter.ipv4, IPTestPreset(), NO);
+    XCTAssertEqual(adapter.connectionStatus, IPConnectionStatusNotConnected);
+    adapter.activeAddresses = @[@"192.168.10.20"];
+    XCTAssertEqual(adapter.connectionStatus, IPConnectionStatusConnected);
+}
+
+- (void)testExplicitManualLinkLocalAddressIsNotSelfAssigned
+{
+    IPAdapterSnapshot *adapter = IPTestAdapter();
+    IPPreset *preset = IPTestPreset();
+    preset.address = @"169.254.10.20";
+    preset.mask = @"255.255.0.0";
+    adapter.ipv4 = IPDesiredIPv4(adapter.ipv4, preset, NO);
+    adapter.linkActive = YES;
+    adapter.activeAddresses = @[preset.address];
+    XCTAssertEqual(adapter.connectionStatus, IPConnectionStatusConnected);
 }
 
 @end

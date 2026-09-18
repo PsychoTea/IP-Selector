@@ -27,12 +27,12 @@ static BOOL IPIsInternalUSBNetwork(io_registry_entry_t interface)
     return IPIsUSBDeviceNetworkPath(classes);
 }
 
-static NSDictionary<NSString *, NSNumber *> *IPAttachedEthernetInterfaces(void)
+static NSDictionary<NSString *, NSNumber *> *IPAttachedNetworkInterfaces(void)
 {
     NSMutableDictionary *result = [NSMutableDictionary dictionary];
     io_iterator_t iterator = IO_OBJECT_NULL;
     if (IOServiceGetMatchingServices(
-            kIOMainPortDefault, IOServiceMatching("IOEthernetInterface"), &iterator)
+            kIOMainPortDefault, IOServiceMatching("IONetworkInterface"), &iterator)
         != KERN_SUCCESS) {
         return result;
     }
@@ -95,7 +95,7 @@ static NSDictionary *IPProtocolConfiguration(SCNetworkServiceRef service, CFStri
 
 + (NSArray<IPAdapterSnapshot *> *)adaptersWithPreferences:(SCPreferencesRef)preferences
 {
-    NSDictionary *hardware = IPAttachedEthernetInterfaces();
+    NSDictionary *hardware = IPAttachedNetworkInterfaces();
     SCNetworkSetRef set = SCNetworkSetCopyCurrent(preferences);
     if (!set) {
         return @[];
@@ -132,8 +132,14 @@ static NSDictionary *IPProtocolConfiguration(SCNetworkServiceRef service, CFStri
                                     store:(SCDynamicStoreRef)store
 {
     SCNetworkInterfaceRef interface = SCNetworkServiceGetInterface(service);
-    if (!interface || !CFEqual(SCNetworkInterfaceGetInterfaceType(interface), kSCNetworkInterfaceTypeEthernet)
-        || !SCNetworkServiceGetEnabled(service)) {
+    if (!interface || !SCNetworkServiceGetEnabled(service)) {
+        return nil;
+    }
+
+    CFStringRef type = SCNetworkInterfaceGetInterfaceType(interface);
+    BOOL isEthernet = type && CFEqual(type, kSCNetworkInterfaceTypeEthernet);
+    BOOL isWiFi = type && CFEqual(type, kSCNetworkInterfaceTypeIEEE80211);
+    if (!isEthernet && !isWiFi) {
         return nil;
     }
 
@@ -148,8 +154,10 @@ static NSDictionary *IPProtocolConfiguration(SCNetworkServiceRef service, CFStri
     }
 
     IPAdapterSnapshot *adapter = [IPAdapterSnapshot new];
+    adapter.wiFi = isWiFi;
     adapter.serviceID = (__bridge NSString *)SCNetworkServiceGetServiceID(service);
-    adapter.serviceName = (__bridge NSString *)SCNetworkServiceGetName(service) ?: @"Ethernet";
+    adapter.serviceName = (__bridge NSString *)SCNetworkServiceGetName(service)
+        ?: (isWiFi ? @"Wi-Fi" : @"Ethernet");
     adapter.bsdName = bsdName;
     adapter.registryID = registryID;
     adapter.mac = IPNormalizedMAC(

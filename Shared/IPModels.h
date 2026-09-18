@@ -14,13 +14,21 @@ NS_ASSUME_NONNULL_BEGIN
 + (nullable instancetype)fromJSON:(id)object error:(NSError **)error;
 @end
 
+typedef NS_ENUM(NSInteger, IPConnectionStatus) {
+    IPConnectionStatusNotConnected,
+    IPConnectionStatusSelfAssigned,
+    IPConnectionStatusConnected
+};
+
 @interface IPAdapterSnapshot : NSObject <NSSecureCoding>
 @property (nonatomic, copy) NSString *serviceID;
 @property (nonatomic, copy) NSString *serviceName;
 @property (nonatomic, copy) NSString *bsdName;
 @property (nonatomic, copy) NSString *mac;
 @property (nonatomic, copy) NSNumber *registryID;
+@property (nonatomic, getter=isWiFi) BOOL wiFi;
 @property (nonatomic) BOOL linkActive;
+@property (nonatomic, readonly) IPConnectionStatus connectionStatus;
 @property (nonatomic, copy) NSArray<NSString *> *activeAddresses;
 @property (nonatomic, copy) NSDictionary *ipv4;
 @property (nonatomic, copy) NSDictionary *dns;

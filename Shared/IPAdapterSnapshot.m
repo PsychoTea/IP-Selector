@@ -55,6 +55,30 @@
     return usesDHCP && [self.dns[@"ServerAddresses"] count] == 0;
 }
 
+- (IPConnectionStatus)connectionStatus
+{
+    if (!self.linkActive) {
+        return IPConnectionStatusNotConnected;
+    }
+
+    BOOL hasLinkLocalAddress = NO;
+    BOOL manual = [self.ipv4[@"ConfigMethod"] isEqual:@"Manual"];
+    for (NSString *address in self.activeAddresses) {
+        if (!IPValidUnicastIPv4(address)) {
+            continue;
+        }
+
+        // An explicitly configured link-local address is not self-assigned.
+        if (![address hasPrefix:@"169.254."] || manual) {
+            return IPConnectionStatusConnected;
+        }
+
+        hasLinkLocalAddress = YES;
+    }
+
+    return hasLinkLocalAddress ? IPConnectionStatusSelfAssigned : IPConnectionStatusNotConnected;
+}
+
 - (void)encodeWithCoder:(NSCoder *)coder
 {
     [coder encodeObject:self.serviceID forKey:@"serviceID"];
@@ -65,6 +89,7 @@
     [coder encodeObject:self.activeAddresses forKey:@"activeAddresses"];
     [coder encodeObject:self.ipv4 forKey:@"ipv4"];
     [coder encodeObject:self.dns forKey:@"dns"];
+    [coder encodeBool:self.isWiFi forKey:@"wiFi"];
     [coder encodeBool:self.linkActive forKey:@"linkActive"];
 }
 
@@ -93,6 +118,7 @@
             return nil;
         }
 
+        _wiFi = [coder containsValueForKey:@"wiFi"] && [coder decodeBoolForKey:@"wiFi"];
         _linkActive = [coder decodeBoolForKey:@"linkActive"];
     }
 
