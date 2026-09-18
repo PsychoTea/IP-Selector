@@ -1,0 +1,39 @@
+# Build products and release logs
+build/
+DerivedData/
+*.app/
+*.dmg
+*.xcarchive/
+*.xcresult/
+*.dSYM/
+*.log
+
+# Xcode user settings
+*.xcuserstate
+xcuserdata/
+*.xccheckout
+*.xcscmblueprint
+
+# macOS metadata
+.DS_Store
+._*
+
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+.venv/
+
+# Local credentials and signing material
+.env
+.env.*
+!.env.example
+*.p8
+*.p12
+*.pfx
+*.pem
+*.key
+*.cer
+*.mobileprovision
+*.provisionprofile
+*.keychain
+*.keychain-db
