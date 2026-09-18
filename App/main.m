@@ -1,11 +1,41 @@
 #import "IPAppDelegate.h"
 #import "IPHelperClient.h"
 
+static int IPCheckHelperConnection(void)
+{
+    IPHelperClient *client = [IPHelperClient new];
+    __block BOOL finished = NO;
+    __block int exitStatus = 1;
+    [client checkConnection:^(IPApplyResult *result) {
+        printf("%s\n", result.message.UTF8String);
+        exitStatus = result.success ? 0 : 1;
+        finished = YES;
+    }];
+
+    NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:35];
+    while (!finished && deadline.timeIntervalSinceNow > 0) {
+        [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.1]];
+    }
+
+    if (!finished) {
+        fprintf(stderr, "Helper connection check timed out.\n");
+    }
+
+    [client invalidate];
+
+    return exitStatus;
+}
+
 static BOOL IPRunMaintenanceCommand(NSArray<NSString *> *arguments, int *exitStatus)
 {
     // Maintenance runs inside the signed app bundle so SMAppService targets
 
     // this app's helper. It does not write to the network configuration.
+    if ([arguments containsObject:@"--check-helper"]) {
+        *exitStatus = IPCheckHelperConnection();
+        return YES;
+    }
+
     BOOL remove = [arguments containsObject:@"--remove-helper"];
     BOOL reset = NO;
 #if IP_LOCAL_TEST

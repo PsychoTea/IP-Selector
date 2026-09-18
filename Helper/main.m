@@ -35,18 +35,20 @@
 
 @end
 @interface IPHelperDelegate : NSObject <NSXPCListenerDelegate>
+@property (nonatomic, copy) NSString *peerRequirement;
 @property (nonatomic, strong) dispatch_queue_t queue;
 @end
 @implementation IPHelperDelegate
 
 - (BOOL)listener:(NSXPCListener *)listener shouldAcceptNewConnection:(NSXPCConnection *)connection
 {
-    NSString *requirement = IPPeerRequirement(IPAppIdentifier);
-    if (!requirement) {
+    if (!self.peerRequirement) {
         return NO;
     }
 
-    [connection setCodeSigningRequirement:requirement];
+    // Use the identity read at startup. An app update can replace our executable
+    // while this process is still running. XPC still checks every client.
+    [connection setCodeSigningRequirement:self.peerRequirement];
 
     IPHelperSession *session = [IPHelperSession new];
     session.queue = self.queue;
@@ -73,6 +75,7 @@ int main(int argc, const char *argv[])
         }
 
         IPHelperDelegate *delegate = [IPHelperDelegate new];
+        delegate.peerRequirement = requirement;
         delegate.queue
             = dispatch_queue_create("org.ipselector.network-writes", DISPATCH_QUEUE_SERIAL);
 

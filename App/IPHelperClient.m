@@ -75,6 +75,10 @@
     }
 
     return [_connection remoteObjectProxyWithErrorHandler:^(NSError *error) {
+        NSLog(@"Helper XPC connection failed (%@ %ld): %@",
+            error.domain,
+            (long)error.code,
+            error.localizedDescription);
         dispatch_async(dispatch_get_main_queue(), ^{
             completion(
                 [IPApplyResult failure:@"The helper connection failed. Check helper approval and "
