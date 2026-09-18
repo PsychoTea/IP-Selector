@@ -82,6 +82,18 @@
 			"path" = "App/IPNetworkMonitor.m";
 			"sourceTree" = "SOURCE_ROOT";
 		};
+		"CA5D8EF30085709D3F3EDB65" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.c.h";
+			"path" = "App/IPPresetListCell.h";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"CECFB5377C61FD32E02F22B4" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.c.objc";
+			"path" = "App/IPPresetListCell.m";
+			"sourceTree" = "SOURCE_ROOT";
+		};
 		"F6484BE67CF31CDD8EB453D4" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.c.h";
@@ -135,6 +147,8 @@
 				"8C7C999C766DA32844A507F3",
 				"54A5CDF729E78F4DD75EC9E8",
 				"6913B34E631ABB775FC4CBFE",
+				"CA5D8EF30085709D3F3EDB65",
+				"CECFB5377C61FD32E02F22B4",
 				"F6484BE67CF31CDD8EB453D4",
 				"5275B7470224E608F86C33DA",
 				"0044CC76689AB8562DE449BC",
@@ -362,6 +376,12 @@
 			"path" = "Tests/IPPresetStoreTests.m";
 			"sourceTree" = "SOURCE_ROOT";
 		};
+		"C7BBD49B0A0EBAB3066ED5FF" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.c.objc";
+			"path" = "Tests/IPSettingsControllerTests.m";
+			"sourceTree" = "SOURCE_ROOT";
+		};
 		"EF64AC6B9419DA0F76FAE32B" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.c.h";
@@ -390,6 +410,7 @@
 				"0E8181FB7AB9B61031B957ED",
 				"CDA5BA00F956A641ED98C4FB",
 				"2E94BCCBCC0FA942D5C5F446",
+				"C7BBD49B0A0EBAB3066ED5FF",
 				"EF64AC6B9419DA0F76FAE32B",
 				"55A6B107F9DC54BC0A683552",
 				"451C94165639A2CED713B423",
@@ -805,6 +826,10 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "6913B34E631ABB775FC4CBFE";
 		};
+		"9BFA96958AFB7B73FBE81EBC" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "CECFB5377C61FD32E02F22B4";
+		};
 		"BC23CA1744CC35386536FE98" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "5275B7470224E608F86C33DA";
@@ -838,6 +863,7 @@
 				"9976F8FC70A2EBFAEA3D7286",
 				"67FCD00F22E8308211CEA449",
 				"BB867BEFA41AF2A316290913",
+				"9BFA96958AFB7B73FBE81EBC",
 				"BC23CA1744CC35386536FE98",
 				"47C449357D41D9C661DBE39B",
 				"20E2ED76D96800B1CA68535C",
@@ -1130,6 +1156,14 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "2384A499CD3BA4C817D7E88B";
 		};
+		"09B2181ACDA3A43A8E5FC544" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "6D7BFF6A4CACCF8863CCFA74";
+		};
+		"D2E2C4B9C67BABFA5C30DA38" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "CECFB5377C61FD32E02F22B4";
+		};
 		"5CC15C190713184D327B3C22" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "B6A7CE50E755469F6FE76AEC";
@@ -1153,6 +1187,10 @@
 		"4015CE2FD2C28FCF1D5D278C" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "2E94BCCBCC0FA942D5C5F446";
+		};
+		"D9C2616F6BD7901E25C2DCEB" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "C7BBD49B0A0EBAB3066ED5FF";
 		};
 		"56A0A8702D7DDAC476C50069" = {
 			"isa" = "PBXBuildFile";
@@ -1179,20 +1217,23 @@
 				"BFAC0039B4C9E77F52361B75",
 				"4EC87B414BE940A0002EE98E",
 				"3A3E5370CA0C601165B9BC0F",
+				"09B2181ACDA3A43A8E5FC544",
+				"D2E2C4B9C67BABFA5C30DA38",
 				"5CC15C190713184D327B3C22",
 				"524D0B4E9727B67792E3BB1A",
 				"BE66B868883E50BC129F2F00",
 				"CA12B2E3AEE7D154EB1CCA1A",
 				"754F1183334F2F064ACDF895",
 				"4015CE2FD2C28FCF1D5D278C",
+				"D9C2616F6BD7901E25C2DCEB",
 				"56A0A8702D7DDAC476C50069",
 				"1CA7EAEC0EBBE3D8ABE63C09",
 			);
 			"runOnlyForDeploymentPostprocessing" = 0;
 		};
-		"7A3917573AE5B3F64CA88859" = {
+		"26A958A0E921834E08EE196C" = {
 			"isa" = "PBXBuildFile";
-			"fileRef" = "DF42A4D5D3537666F9ED0012";
+			"fileRef" = "527859C0AD13E24CA8C9B65E";
 		};
 		"EBEABF581B66433006DBA88C" = {
 			"isa" = "PBXBuildFile";
@@ -1210,6 +1251,10 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "8A2CE2248AF2DE56A68A29E3";
 		};
+		"A6746739324185D595E45810" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "92E3F8E199C2BB2858E52421";
+		};
 		"F29593B9DFB1DEC03B981490" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "9D8B9734A67B439F877D0E59";
@@ -1218,11 +1263,12 @@
 			"isa" = "PBXFrameworksBuildPhase";
 			"buildActionMask" = 2147483647;
 			"files" = (
-				"7A3917573AE5B3F64CA88859",
+				"26A958A0E921834E08EE196C",
 				"EBEABF581B66433006DBA88C",
 				"E3ABC4657E26C98C0FE1F0CA",
 				"1A33219B6BEFD1D1D388C58C",
 				"6A82B096332DD88270505EC9",
+				"A6746739324185D595E45810",
 				"F29593B9DFB1DEC03B981490",
 			);
 			"runOnlyForDeploymentPostprocessing" = 0;

@@ -171,6 +171,58 @@ NSNotificationName const IPPresetsChanged = @"IPPresetsChanged";
     return YES;
 }
 
+- (NSUInteger)indexOfPresetWithIdentifier:(NSString *)identifier
+{
+    return [self.presets
+        indexOfObjectPassingTest:^BOOL(IPPreset *preset, NSUInteger index, BOOL *stop) {
+            return [preset.identifier isEqual:identifier];
+        }];
+}
+
+- (BOOL)savePreset:(IPPreset *)preset error:(NSError **)error
+{
+    if (![preset validate:error]) {
+        return NO;
+    }
+
+    NSMutableArray *presets = self.presets.mutableCopy;
+    NSUInteger index = [self indexOfPresetWithIdentifier:preset.identifier];
+    if (index == NSNotFound) {
+        [presets addObject:preset];
+    } else {
+        presets[index] = preset;
+    }
+
+    return [self replacePresets:presets error:error];
+}
+
+- (BOOL)removePresetWithIdentifier:(NSString *)identifier error:(NSError **)error
+{
+    NSUInteger index = [self indexOfPresetWithIdentifier:identifier];
+    if (index == NSNotFound) {
+        return YES;
+    }
+
+    NSMutableArray *presets = self.presets.mutableCopy;
+    [presets removeObjectAtIndex:index];
+
+    return [self replacePresets:presets error:error];
+}
+
+- (BOOL)movePresetWithIdentifier:(NSString *)identifier by:(NSInteger)offset error:(NSError **)error
+{
+    NSUInteger index = [self indexOfPresetWithIdentifier:identifier];
+    if (index == NSNotFound || (offset != -1 && offset != 1) || (offset == -1 && index == 0)
+        || (offset == 1 && index + 1 >= self.presets.count)) {
+        return IPValidationFailure(error, @"This preset cannot move in that direction.");
+    }
+
+    NSMutableArray *presets = self.presets.mutableCopy;
+    [presets exchangeObjectAtIndex:index withObjectAtIndex:(NSUInteger)((NSInteger)index + offset)];
+
+    return [self replacePresets:presets error:error];
+}
+
 - (BOOL)replacePresets:(NSArray<IPPreset *> *)presets error:(NSError **)error
 {
     return [self writePresets:presets aliases:self.aliases error:error];

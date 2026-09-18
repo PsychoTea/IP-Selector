@@ -96,4 +96,49 @@
     }
 }
 
+- (void)testSaveUpdatesByIdentifierAndPreservesOrder
+{
+    IPPresetStore *store = self.store;
+    IPPreset *first = IPTestPreset();
+    IPPreset *second = IPTestPreset();
+    XCTAssertTrue([store savePreset:first error:nil]);
+    XCTAssertTrue([store savePreset:second error:nil]);
+    first.name = @"Updated";
+    XCTAssertTrue([store savePreset:first error:nil]);
+    XCTAssertEqual(store.presets.count, 2u);
+    XCTAssertEqualObjects(store.presets.firstObject.name, @"Updated");
+    XCTAssertEqualObjects(store.presets.lastObject.identifier, second.identifier);
+    XCTAssertEqualObjects(self.store.presets.firstObject.name, @"Updated");
+}
+
+- (void)testDeleteKeepsTheIntendedTargetAfterReordering
+{
+    IPPresetStore *store = self.store;
+    IPPreset *first = IPTestPreset();
+    IPPreset *second = IPTestPreset();
+    XCTAssertTrue(([store replacePresets:@[first, second] error:nil]));
+    NSString *deleteID = first.identifier;
+    XCTAssertTrue([store movePresetWithIdentifier:deleteID by:1 error:nil]);
+    XCTAssertTrue([store removePresetWithIdentifier:deleteID error:nil]);
+    XCTAssertEqual(store.presets.count, 1u);
+    XCTAssertEqualObjects(store.presets.firstObject.identifier, second.identifier);
+    XCTAssertTrue([store removePresetWithIdentifier:deleteID error:nil]);
+    XCTAssertEqual(store.presets.count, 1u);
+}
+
+- (void)testInvalidMoveDoesNotChangeTheStore
+{
+    IPPresetStore *store = self.store;
+    IPPreset *preset = IPTestPreset();
+    XCTAssertTrue([store savePreset:preset error:nil]);
+    for (NSNumber *offset in @[@(-1), @0, @1, @(NSIntegerMax)]) {
+        NSError *error = nil;
+        XCTAssertFalse([store movePresetWithIdentifier:preset.identifier by:offset.integerValue
+                                                 error:&error]);
+        XCTAssertNotNil(error);
+    }
+    XCTAssertEqualObjects(store.presets.firstObject.JSON, preset.JSON);
+    XCTAssertEqualObjects(self.store.presets.firstObject.JSON, preset.JSON);
+}
+
 @end

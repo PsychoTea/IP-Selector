@@ -1,5 +1,6 @@
 #import "IPSettingsController.h"
 #import "IPPresetStore.h"
+#import "IPPresetListCell.h"
 #import <ServiceManagement/ServiceManagement.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
@@ -28,6 +29,43 @@ static NSStackView *IPStack(NSArray<NSView *> *views, NSUserInterfaceLayoutOrien
     return stack;
 }
 
+static NSBox *IPSeparator(void)
+{
+    NSBox *separator = [NSBox new];
+    separator.boxType = NSBoxSeparator;
+
+    return separator;
+}
+
+static NSTextField *IPHeading(NSString *text)
+{
+    NSTextField *label = [NSTextField labelWithString:text];
+    label.font = [NSFont boldSystemFontOfSize:17];
+
+    return label;
+}
+
+static NSButton *IPIconButton(NSString *symbol, NSString *label, id target, SEL action)
+{
+    NSButton *button = [NSButton buttonWithImage:[NSImage imageWithSystemSymbolName:symbol
+                                                           accessibilityDescription:label]
+                                          target:target
+                                          action:action];
+    button.bezelStyle = NSBezelStyleRounded;
+    button.toolTip = label;
+    button.accessibilityLabel = label;
+    [button.widthAnchor constraintEqualToConstant:30].active = YES;
+
+    return button;
+}
+
+static void IPFillStackWidth(NSStackView *stack)
+{
+    for (NSView *view in stack.arrangedSubviews) {
+        [view.widthAnchor constraintEqualToAnchor:stack.widthAnchor].active = YES;
+    }
+}
+
 @interface IPSettingsController () <NSTableViewDataSource, NSTableViewDelegate>
 @end
 @implementation IPSettingsController {
@@ -41,13 +79,21 @@ static NSStackView *IPStack(NSArray<NSView *> *views, NSUserInterfaceLayoutOrien
     NSTextField *_dns;
     NSTextField *_notice;
     NSButton *_login;
+    NSButton *_duplicate;
+    NSButton *_delete;
+    NSButton *_moveUp;
+    NSButton *_moveDown;
+    NSButton *_save;
+    NSTextField *_editorHeading;
+    NSTextField *_listSummary;
     NSString *_editingID;
     NSTimer *_statusTimer;
+    BOOL _reloadingPresets;
 }
 
 - (instancetype)initWithStore:(IPPresetStore *)store
 {
-    NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 744, 440)
+    NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 540)
                                                    styleMask:NSWindowStyleMaskTitled
         | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable
                                                      backing:NSBackingStoreBuffered
@@ -79,43 +125,55 @@ static NSStackView *IPStack(NSArray<NSView *> *views, NSUserInterfaceLayoutOrien
 - (void)build
 {
     NSStackView *list = [self makePresetList];
-
     NSStackView *editor = [self makePresetEditor];
-    NSStackView *columns = IPStack(@[list, editor], NSUserInterfaceLayoutOrientationHorizontal);
+    NSBox *divider = IPSeparator();
+    NSStackView *columns
+        = IPStack(@[list, divider, editor], NSUserInterfaceLayoutOrientationHorizontal);
     columns.alignment = NSLayoutAttributeTop;
     columns.spacing = 20;
+    [NSLayoutConstraint activateConstraints:@[
+        [list.widthAnchor constraintEqualToConstant:250],
+        [columns.heightAnchor constraintEqualToConstant:390],
+        [list.heightAnchor constraintEqualToAnchor:columns.heightAnchor],
+        [editor.heightAnchor constraintEqualToAnchor:columns.heightAnchor],
+        [divider.widthAnchor constraintEqualToConstant:1],
+        [divider.heightAnchor constraintEqualToAnchor:columns.heightAnchor]
+    ]];
 
-    _notice = IPLabel(_store.loadError ? _store.loadError.localizedDescription
-                                       : @"Select a preset to edit it, or create a new one.");
-    [_notice.widthAnchor constraintEqualToConstant:704].active = YES;
+    _notice = IPLabel(_store.loadError.localizedDescription ?: @"");
+    _notice.textColor = _store.loadError ? NSColor.systemRedColor : NSColor.secondaryLabelColor;
+    _notice.hidden = !_store.loadError;
 
     _login = [NSButton checkboxWithTitle:@"Open at login" target:self
                                   action:@selector(toggleLogin:)];
-    NSStackView *fileActions = IPStack(
+    NSStackView *footer = IPStack(
         @[
             IPButton(@"Import…", self, @selector(importPresets:)),
             IPButton(@"Export…", self, @selector(exportPresets:)),
+            [NSView new],
             _login
         ],
         NSUserInterfaceLayoutOrientationHorizontal);
 
-    NSStackView *root
-        = IPStack(@[columns, _notice, fileActions], NSUserInterfaceLayoutOrientationVertical);
-    _root = root;
-    root.spacing = 10;
-    root.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.window.contentView addSubview:root];
-
+    _root = IPStack(
+        @[columns, _notice, IPSeparator(), footer], NSUserInterfaceLayoutOrientationVertical);
+    _root.spacing = 16;
+    _root.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.window.contentView addSubview:_root];
     [NSLayoutConstraint activateConstraints:@[
-        [root.leadingAnchor constraintEqualToAnchor:self.window.contentView.leadingAnchor
-                                           constant:20],
-        [root.topAnchor constraintEqualToAnchor:self.window.contentView.topAnchor constant:20],
-        [root.trailingAnchor
-            constraintLessThanOrEqualToAnchor:self.window.contentView.trailingAnchor
-                                     constant:-20],
-        [root.bottomAnchor constraintLessThanOrEqualToAnchor:self.window.contentView.bottomAnchor
-                                                    constant:-20]
+        [_root.leadingAnchor constraintEqualToAnchor:self.window.contentView.leadingAnchor
+                                            constant:24],
+        [_root.topAnchor constraintEqualToAnchor:self.window.contentView.topAnchor constant:24],
+        [_root.trailingAnchor constraintEqualToAnchor:self.window.contentView.trailingAnchor
+                                             constant:-24],
+        [_root.bottomAnchor constraintEqualToAnchor:self.window.contentView.bottomAnchor
+                                           constant:-24]
     ]];
+    IPFillStackWidth(_root);
+    [self updateListActions];
+    if (_store.presets.count) {
+        [_table selectRowIndexes:[NSIndexSet indexSetWithIndex:0] byExtendingSelection:NO];
+    }
 
     [self updateStatus];
     [self fitWindow];
@@ -123,75 +181,104 @@ static NSStackView *IPStack(NSArray<NSView *> *views, NSUserInterfaceLayoutOrien
 
 - (NSStackView *)makePresetList
 {
+    NSTextField *heading = IPHeading(@"Saved Presets");
+    _listSummary = IPLabel(@"");
+    _listSummary.textColor = NSColor.secondaryLabelColor;
+    NSStackView *header
+        = IPStack(@[heading, _listSummary], NSUserInterfaceLayoutOrientationVertical);
+    header.spacing = 4;
+
     _table = [[NSTableView alloc] initWithFrame:NSZeroRect];
     NSTableColumn *column = [[NSTableColumn alloc] initWithIdentifier:@"preset"];
-    column.title = @"Saved presets";
     column.width = 230;
     [_table addTableColumn:column];
+    _table.headerView = nil;
     _table.delegate = self;
     _table.dataSource = self;
-    _table.rowHeight = 42;
+    _table.rowHeight = 52;
+    _table.style = NSTableViewStyleFullWidth;
+    _table.intercellSpacing = NSMakeSize(0, 2);
 
     NSScrollView *scroll = [NSScrollView new];
     scroll.documentView = _table;
     scroll.hasVerticalScroller = YES;
     scroll.borderType = NSBezelBorder;
-    [scroll.widthAnchor constraintEqualToConstant:240].active = YES;
-    [scroll.heightAnchor constraintEqualToConstant:214].active = YES;
+    [scroll.heightAnchor constraintGreaterThanOrEqualToConstant:230].active = YES;
 
-    NSStackView *editActions = IPStack(
-        @[
-            IPButton(@"New", self, @selector(newPreset:)),
-            IPButton(@"Duplicate", self, @selector(duplicate:)),
-            IPButton(@"Delete", self, @selector(deletePreset:))
-        ],
+    NSButton *add = IPButton(@"New", self, @selector(newPreset:));
+    add.image = [NSImage imageWithSystemSymbolName:@"plus" accessibilityDescription:nil];
+    add.imagePosition = NSImageLeading;
+    _duplicate
+        = IPIconButton(@"plus.square.on.square", @"Duplicate preset", self, @selector(duplicate:));
+    _delete = IPIconButton(@"trash", @"Delete preset", self, @selector(deletePreset:));
+    _moveUp = IPIconButton(@"chevron.up", @"Move preset up", self, @selector(moveUp:));
+    _moveDown = IPIconButton(@"chevron.down", @"Move preset down", self, @selector(moveDown:));
+    NSStackView *actions = IPStack(@[add, _duplicate, _delete, [NSView new], _moveUp, _moveDown],
         NSUserInterfaceLayoutOrientationHorizontal);
-
-    NSStackView *orderActions = IPStack(
-        @[
-            IPButton(@"Move Up", self, @selector(moveUp:)),
-            IPButton(@"Move Down", self, @selector(moveDown:))
-        ],
-        NSUserInterfaceLayoutOrientationHorizontal);
+    actions.spacing = 4;
 
     NSStackView *list
-        = IPStack(@[scroll, editActions, orderActions], NSUserInterfaceLayoutOrientationVertical);
+        = IPStack(@[header, scroll, actions], NSUserInterfaceLayoutOrientationVertical);
+    list.spacing = 12;
+    IPFillStackWidth(list);
 
     return list;
 }
 
 - (NSStackView *)makePresetEditor
 {
+    _editorHeading = IPHeading(@"New Preset");
+    NSTextField *description = IPLabel(@"Use this preset with any adapter.");
+    description.textColor = NSColor.secondaryLabelColor;
+    NSStackView *header
+        = IPStack(@[_editorHeading, description], NSUserInterfaceLayoutOrientationVertical);
+    header.spacing = 4;
+
     _name = [NSTextField textFieldWithString:@""];
     _address = [NSTextField textFieldWithString:@""];
     _mask = [NSTextField textFieldWithString:@"255.255.255.0"];
     _gateway = [NSTextField textFieldWithString:@""];
     _dns = [NSTextField textFieldWithString:@""];
+    _address.placeholderString = @"192.168.1.20";
+    _mask.toolTip = @"Subnet mask or CIDR prefix, such as /24";
+    _gateway.placeholderString = @"Optional";
+    _dns.placeholderString = @"Optional";
 
-    _address.placeholderString = @"192.168.10.20";
-    _mask.placeholderString = @"255.255.255.0 or /24";
-    _gateway.placeholderString = @"Empty = no gateway";
-    _dns.placeholderString = @"Empty = clear manual DNS";
+    NSArray *inputs = @[_name, _address, _mask, _gateway, _dns];
+    NSArray *titles = @[@"Name", @"IP address", @"Subnet mask", @"Gateway", @"DNS servers"];
+    NSMutableArray *rows = [NSMutableArray array];
+    for (NSUInteger i = 0; i < inputs.count; i++) {
+        NSTextField *field = inputs[i];
+        field.accessibilityLabel = titles[i];
+        [field.heightAnchor constraintEqualToConstant:28].active = YES;
+        [rows addObject:@[[NSTextField labelWithString:titles[i]], field]];
+        if (i + 1 < inputs.count) {
+            field.nextKeyView = inputs[i + 1];
+        }
+    }
 
-    NSGridView *form = [NSGridView gridViewWithViews:@[
-        @[IPLabel(@"Name"), _name],
-        @[IPLabel(@"IPv4 address"), _address],
-        @[IPLabel(@"Subnet mask"), _mask],
-        @[IPLabel(@"Gateway"), _gateway],
-        @[IPLabel(@"DNS servers"), _dns]
-    ]];
-    form.rowSpacing = 12;
-    form.columnSpacing = 10;
+    NSGridView *form = [NSGridView gridViewWithViews:rows];
+    form.rowAlignment = NSGridRowAlignmentNone;
+    form.yPlacement = NSGridCellPlacementCenter;
+    form.rowSpacing = 10;
+    form.columnSpacing = 12;
     [form columnAtIndex:0].xPlacement = NSGridCellPlacementTrailing;
-    [_name.widthAnchor constraintEqualToConstant:320].active = YES;
+    [form columnAtIndex:1].xPlacement = NSGridCellPlacementFill;
 
     NSTextField *help = IPLabel(
-        @"Separate DNS addresses with spaces or commas.\nEach preset assigns one IPv4 address.");
-    [help.widthAnchor constraintEqualToConstant:444].active = YES;
-
-    NSStackView *editor
-        = IPStack(@[form, help, IPButton(@"Save Preset", self, @selector(savePreset:))],
-            NSUserInterfaceLayoutOrientationVertical);
+        @"Leave gateway and DNS empty to clear them. Separate DNS servers with spaces or commas.");
+    help.textColor = NSColor.secondaryLabelColor;
+    _save = IPButton(@"Save Preset", self, @selector(savePreset:));
+    _save.keyEquivalent = @"\r";
+    [_save setContentHuggingPriority:NSLayoutPriorityRequired
+                      forOrientation:NSLayoutConstraintOrientationHorizontal];
+    NSStackView *saveRow
+        = IPStack(@[[NSView new], _save], NSUserInterfaceLayoutOrientationHorizontal);
+    NSStackView *editor = IPStack(@[header, IPSeparator(), form, help, [NSView new], saveRow],
+        NSUserInterfaceLayoutOrientationVertical);
+    editor.spacing = 14;
+    IPFillStackWidth(editor);
+    self.window.initialFirstResponder = _name;
 
     return editor;
 }
@@ -199,7 +286,21 @@ static NSStackView *IPStack(NSArray<NSView *> *views, NSUserInterfaceLayoutOrien
 - (void)fitWindow
 {
     [self.window.contentView layoutSubtreeIfNeeded];
-    [self.window setContentSize:NSMakeSize(744, ceil(_root.fittingSize.height) + 40)];
+    [self.window setContentSize:NSMakeSize(800, ceil(_root.fittingSize.height) + 48)];
+}
+
+- (void)updateListActions
+{
+    NSInteger row = _table.selectedRow;
+    BOOL selected = row >= 0 && row < (NSInteger)_store.presets.count;
+    _duplicate.enabled = selected;
+    _delete.enabled = selected;
+    _moveUp.enabled = selected && row > 0;
+    _moveDown.enabled = selected && row + 1 < (NSInteger)_store.presets.count;
+    _listSummary.stringValue = _store.presets.count
+        ? [NSString stringWithFormat:@"%lu saved · Available to all adapters",
+              (unsigned long)_store.presets.count]
+        : @"No presets yet. Select New to add one.";
 }
 
 - (void)showWindow:(id)sender
@@ -220,24 +321,54 @@ static NSStackView *IPStack(NSArray<NSView *> *views, NSUserInterfaceLayoutOrien
                    row:(NSInteger)row
 {
     IPPreset *preset = _store.presets[row];
-    NSTextField *label
-        = IPLabel([NSString stringWithFormat:@"%@\n%@", preset.name, preset.address]);
-    label.lineBreakMode = NSLineBreakByTruncatingTail;
+    IPPresetListCell *cell = [tableView makeViewWithIdentifier:@"preset" owner:self];
+    if (!cell) {
+        cell = [[IPPresetListCell alloc] initWithFrame:NSZeroRect];
+        cell.identifier = @"preset";
+    }
 
-    return label;
+    cell.textField.stringValue = preset.name;
+    cell.addressLabel.stringValue = preset.address;
+
+    return cell;
 }
 
 - (void)tableViewSelectionDidChange:(NSNotification *)notification
 {
-    NSInteger row = _table.selectedRow;
-    if (row >= 0 && row < (NSInteger)_store.presets.count) {
-        [self loadPreset:_store.presets[row]];
+    if (_reloadingPresets) {
+        return;
     }
+
+    [self updateListActions];
+    IPPreset *preset = self.selectedPreset;
+    if (preset) {
+        [self loadPreset:preset];
+    }
+}
+
+- (IPPreset *)selectedPreset
+{
+    NSInteger row = _table.selectedRow;
+
+    return row >= 0 && row < (NSInteger)_store.presets.count ? _store.presets[row] : nil;
+}
+
+- (void)selectPresetWithIdentifier:(NSString *)identifier
+{
+    NSUInteger index = [_store indexOfPresetWithIdentifier:identifier];
+    if (index != NSNotFound) {
+        [_table selectRowIndexes:[NSIndexSet indexSetWithIndex:index] byExtendingSelection:NO];
+    } else {
+        [_table deselectAll:nil];
+    }
+
+    [self updateListActions];
 }
 
 - (void)loadPreset:(IPPreset *)preset
 {
     _editingID = preset.identifier;
+    _editorHeading.stringValue = @"Edit Preset";
     _name.stringValue = preset.name;
     _address.stringValue = preset.address;
     _mask.stringValue = preset.mask;
@@ -250,7 +381,10 @@ static NSStackView *IPStack(NSArray<NSView *> *views, NSUserInterfaceLayoutOrien
     [_table deselectAll:nil];
     [self loadPreset:preset];
     _editingID = nil;
+    _editorHeading.stringValue = @"New Preset";
+    [self updateListActions];
     [self showWindow:nil];
+    [self.window makeFirstResponder:_name];
 }
 
 - (void)newPreset:(id)sender
@@ -260,12 +394,11 @@ static NSStackView *IPStack(NSArray<NSView *> *views, NSUserInterfaceLayoutOrien
 
 - (void)duplicate:(id)sender
 {
-    NSInteger row = _table.selectedRow;
-    if (row < 0) {
+    IPPreset *preset = [self.selectedPreset copy];
+    if (!preset) {
         return;
     }
 
-    IPPreset *preset = [_store.presets[row] copy];
     preset.name = [preset.name stringByAppendingString:@" Copy"];
     [self editNewPreset:preset];
 }
@@ -294,43 +427,27 @@ static NSStackView *IPStack(NSArray<NSView *> *views, NSUserInterfaceLayoutOrien
     }]];
 
     NSError *error = nil;
-    if (![preset validate:&error]) {
+    if (![_store savePreset:preset error:&error]) {
         [self report:error];
         return;
     }
 
-    NSMutableArray *presets = [_store.presets mutableCopy];
-    NSUInteger index =
-        [presets indexOfObjectPassingTest:^BOOL(IPPreset *existing, NSUInteger idx, BOOL *stop) {
-            return [existing.identifier isEqual:preset.identifier];
-        }];
-    if (index == NSNotFound) {
-        index = presets.count;
-        [presets addObject:preset];
-    } else {
-        presets[index] = preset;
-    }
-
-    if (![_store replacePresets:presets error:&error]) {
-        [self report:error];
-        return;
-    }
-
-    _editingID = preset.identifier;
-    [_table selectRowIndexes:[NSIndexSet indexSetWithIndex:index] byExtendingSelection:NO];
-    _notice.stringValue = @"Preset saved.";
+    [self loadPreset:preset];
+    [self selectPresetWithIdentifier:preset.identifier];
+    [self showNotice:@"Preset saved." error:NO];
 }
 
 - (void)deletePreset:(id)sender
 {
-    NSInteger row = _table.selectedRow;
-    if (row < 0) {
+    IPPreset *preset = self.selectedPreset;
+    if (!preset) {
         return;
     }
 
+    NSString *identifier = preset.identifier;
     NSAlert *alert = [NSAlert new];
     alert.messageText = @"Delete this preset?";
-    alert.informativeText = _store.presets[row].name;
+    alert.informativeText = preset.name;
     [alert addButtonWithTitle:@"Delete"];
     [alert addButtonWithTitle:@"Cancel"];
 
@@ -339,12 +456,10 @@ static NSStackView *IPStack(NSArray<NSView *> *views, NSUserInterfaceLayoutOrien
             return;
         }
 
-        NSMutableArray *presets = [self->_store.presets mutableCopy];
-        [presets removeObjectAtIndex:row];
-        NSError *error;
-        if (![self->_store replacePresets:presets error:&error]) {
+        NSError *error = nil;
+        if (![self->_store removePresetWithIdentifier:identifier error:&error]) {
             [self report:error];
-        } else {
+        } else if ([self->_editingID isEqual:identifier]) {
             [self newPreset:nil];
         }
     }];
@@ -352,21 +467,16 @@ static NSStackView *IPStack(NSArray<NSView *> *views, NSUserInterfaceLayoutOrien
 
 - (void)move:(NSInteger)offset
 {
-    NSInteger row = _table.selectedRow;
-    NSInteger destination = row + offset;
-    if (row < 0 || destination < 0 || destination >= (NSInteger)_store.presets.count) {
+    IPPreset *preset = self.selectedPreset;
+    if (!preset) {
         return;
     }
 
-    NSMutableArray *presets = [_store.presets mutableCopy];
-    [presets exchangeObjectAtIndex:row withObjectAtIndex:destination];
-
-    NSError *error;
-    if (![_store replacePresets:presets error:&error]) {
+    NSError *error = nil;
+    if (![_store movePresetWithIdentifier:preset.identifier by:offset error:&error]) {
         [self report:error];
     } else {
-        [_table selectRowIndexes:[NSIndexSet indexSetWithIndex:destination]
-            byExtendingSelection:NO];
+        [self selectPresetWithIdentifier:preset.identifier];
     }
 }
 
@@ -382,12 +492,30 @@ static NSStackView *IPStack(NSArray<NSView *> *views, NSUserInterfaceLayoutOrien
 
 - (void)storeChanged:(NSNotification *)note
 {
+    BOOL hadSelection = _table.selectedRow >= 0;
+    _reloadingPresets = YES;
     [_table reloadData];
+    if (hadSelection && _editingID) {
+        [self selectPresetWithIdentifier:_editingID];
+    } else {
+        [_table deselectAll:nil];
+    }
+
+    _reloadingPresets = NO;
+    [self updateListActions];
+}
+
+- (void)showNotice:(NSString *)message error:(BOOL)isError
+{
+    _notice.stringValue = message;
+    _notice.textColor = isError ? NSColor.systemRedColor : NSColor.secondaryLabelColor;
+    _notice.hidden = NO;
+    [self fitWindow];
 }
 
 - (void)report:(NSError *)error
 {
-    _notice.stringValue = error.localizedDescription ?: @"The operation failed.";
+    [self showNotice:error.localizedDescription ?: @"The operation failed." error:YES];
 }
 
 - (void)importPresets:(id)sender
@@ -403,7 +531,7 @@ static NSStackView *IPStack(NSArray<NSView *> *views, NSUserInterfaceLayoutOrien
             if (![self->_store importURL:panel.URL error:&error]) {
                 [self report:error];
             } else {
-                self->_notice.stringValue = @"Presets imported as new entries.";
+                [self showNotice:@"Presets imported as new entries." error:NO];
             }
         }
     }];
@@ -421,7 +549,7 @@ static NSStackView *IPStack(NSArray<NSView *> *views, NSUserInterfaceLayoutOrien
             if (![self->_store exportURL:panel.URL error:&error]) {
                 [self report:error];
             } else {
-                self->_notice.stringValue = @"Presets exported. Adapter names were not included.";
+                [self showNotice:@"Presets exported." error:NO];
             }
         }
     }];
@@ -429,7 +557,6 @@ static NSStackView *IPStack(NSArray<NSView *> *views, NSUserInterfaceLayoutOrien
 
 - (void)updateStatus
 {
-    [self fitWindow];
     _login.state = SMAppService.mainAppService.status == SMAppServiceStatusEnabled
         ? NSControlStateValueOn
         : NSControlStateValueOff;

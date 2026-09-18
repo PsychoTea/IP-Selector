@@ -300,8 +300,11 @@ class ProjectBuilder:
             ),
             self.target(
                 "IPSelectorTests", "bundle.unit-test",
-                shared + ["App/IPPresetStore.m", "App/IPHelperSetup.m"] + self.source_files("Tests"),
-                ["Foundation", *network_frameworks, "ServiceManagement", "XCTest"],
+                shared + [
+                    "App/IPPresetStore.m", "App/IPHelperSetup.m",
+                    "App/IPSettingsController.m", "App/IPPresetListCell.m",
+                ] + self.source_files("Tests"),
+                ["Cocoa", *network_frameworks, "ServiceManagement", "UniformTypeIdentifiers", "XCTest"],
                 {
                     "GENERATE_INFOPLIST_FILE": "YES",
                     "ENABLE_HARDENED_RUNTIME": "NO",
