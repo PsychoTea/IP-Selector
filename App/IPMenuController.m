@@ -2,46 +2,38 @@
 #import "IPPresetStore.h"
 #import "IPNetworkMonitor.h"
 #import "IPHelperClient.h"
+#import "IPQuickChangeController.h"
+#import "IPQuickChangeRequestBuilder.h"
+#import "IPRecentAddresses.h"
+#import "IPAdapterMenu.h"
 
-@interface IPPresetButton : NSButton
-@property (nonatomic, strong) IPPreset *preset;
+@interface IPMenuController () <IPAdapterMenuActions>
 @end
-@implementation IPPresetButton
-@end
-
-static NSTextField *IPMenuLabel(NSString *text)
-{
-    NSTextField *label = [NSTextField wrappingLabelWithString:text];
-    label.font = [NSFont systemFontOfSize:12];
-
-    return label;
-}
 
 @implementation IPMenuController {
     IPPresetStore *_store;
     IPNetworkMonitor *_monitor;
     IPHelperClient *_client;
-    NSPopUpButton *_adapterPicker;
-    NSStackView *_presets;
-    NSButton *_dhcp;
-    NSButton *_approval;
-    NSStackView *_root;
-    NSLayoutConstraint *_presetHeight;
-    NSTimer *_statusTimer;
-    IPAdapterSnapshot *_selected;
+    IPRecentAddresses *_history;
+    IPQuickChangeController *_quickChange;
     IPAdapterSnapshot *_undoState;
     NSString *_undoToken;
     BOOL _busy;
+    BOOL _tracking;
 }
 
 - (instancetype)initWithStore:(IPPresetStore *)store
                       monitor:(IPNetworkMonitor *)monitor
                        client:(IPHelperClient *)client
 {
-    if ((self = [super initWithNibName:nil bundle:nil])) {
+    if ((self = [super init])) {
         _store = store;
         _monitor = monitor;
         _client = client;
+        _history = [[IPRecentAddresses alloc] initWithDefaults:NSUserDefaults.standardUserDefaults];
+        _menu = [[NSMenu alloc] initWithTitle:@"IP Selector"];
+        _menu.autoenablesItems = NO;
+        _menu.delegate = self;
 
         [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(changed:)
                                                    name:IPAdaptersChanged
@@ -59,110 +51,35 @@ static NSTextField *IPMenuLabel(NSString *text)
     return self;
 }
 
-- (void)loadView
+- (void)menuNeedsUpdate:(NSMenu *)menu
 {
-    self.view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 430, 320)];
-
-    NSTextField *heading = [NSTextField
-        labelWithString:[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleDisplayName"]
-            ?: @"IP Selector"];
-    heading.font = [NSFont boldSystemFontOfSize:17];
-
-    _adapterPicker = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
-    _adapterPicker.target = self;
-    _adapterPicker.action = @selector(selectAdapter:);
-
-    _presets = [NSStackView new];
-    _presets.orientation = NSUserInterfaceLayoutOrientationVertical;
-    _presets.alignment = NSLayoutAttributeLeading;
-    _presets.spacing = 6;
-    _presets.edgeInsets = NSEdgeInsetsMake(4, 0, 4, 8);
-
-    NSScrollView *scroll = [NSScrollView new];
-    scroll.documentView = _presets;
-    scroll.hasVerticalScroller = YES;
-    scroll.drawsBackground = NO;
-    _presets.translatesAutoresizingMaskIntoConstraints = NO;
-    [_presets.widthAnchor constraintEqualToAnchor:scroll.contentView.widthAnchor].active = YES;
-    _presetHeight = [scroll.heightAnchor constraintEqualToConstant:32];
-    _presetHeight.active = YES;
-
-    _dhcp = [NSButton buttonWithTitle:@"Use DHCP" target:self action:@selector(useDHCP:)];
-    NSButton *manage = [NSButton buttonWithTitle:@"Manage Presets…" target:self
-                                          action:@selector(manage:)];
-    NSButton *quit = [NSButton buttonWithTitle:@"Quit" target:NSApp action:@selector(terminate:)];
-
-    NSView *footerSpace = [NSView new];
-    NSStackView *footer = [NSStackView stackViewWithViews:@[manage, footerSpace, quit]];
-    footer.spacing = 8;
-    footer.distribution = NSStackViewDistributionFill;
-    for (NSButton *button in @[manage, quit]) {
-        [button setContentHuggingPriority:NSLayoutPriorityRequired
-                           forOrientation:NSLayoutConstraintOrientationHorizontal];
-    }
-
-    _approval = [NSButton buttonWithTitle:@"Approve Helper…" target:self
-                                   action:@selector(approveHelper:)];
-
-    NSStackView *root = [NSStackView
-        stackViewWithViews:@[heading, _adapterPicker, scroll, _dhcp, _approval, footer]];
-    _root = root;
-    root.orientation = NSUserInterfaceLayoutOrientationVertical;
-    root.alignment = NSLayoutAttributeLeading;
-    root.spacing = 8;
-    root.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.view addSubview:root];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [root.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:16],
-        [root.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-16],
-        [root.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:16],
-        [root.bottomAnchor constraintLessThanOrEqualToAnchor:self.view.bottomAnchor constant:-16]
-    ]];
-    for (NSView *view in @[_adapterPicker, scroll, footer]) {
-        [view.widthAnchor constraintEqualToAnchor:root.widthAnchor].active = YES;
-    }
-
-    for (NSView *view in root.arrangedSubviews) {
-        [view setContentHuggingPriority:NSLayoutPriorityRequired
-                         forOrientation:NSLayoutConstraintOrientationVertical];
-    }
-
-    __weak typeof(self) weakSelf = self;
-    _statusTimer = [NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer *timer) {
-        if (weakSelf.view.window.visible) {
-            [weakSelf refreshApprovalStatus];
-        }
-    }];
-    [self render];
-}
-
-- (void)refreshApprovalStatus
-{
-    if (_approval.hidden != (_client.service.status == SMAppServiceStatusEnabled)) {
-        [self render];
-    }
-}
-
-- (void)viewWillAppear
-{
-    [super viewWillAppear];
-
     [_monitor refresh];
-    [self render];
+    if (_tracking) {
+        [self refreshVisibleAdapters];
+    } else {
+        [self rebuildMenu];
+    }
+}
+
+- (void)menuWillOpen:(NSMenu *)menu
+{
+    _tracking = YES;
+}
+
+- (void)menuDidClose:(NSMenu *)menu
+{
+    _tracking = NO;
 }
 
 - (void)changed:(NSNotification *)note
 {
-    if (_selected) {
-        IPAdapterSnapshot *replacement = nil;
-        for (IPAdapterSnapshot *adapter in _monitor.adapters) {
-            if ([adapter sameAttachment:_selected]) {
-                replacement = adapter;
-            }
+    if (_tracking) {
+        if ([note.name isEqual:IPPresetsChanged]) {
+            // Preset edits can change the actions and their order.
+            [_menu cancelTracking];
+        } else {
+            [self refreshVisibleAdapters];
         }
-
-        _selected = replacement;
     }
 
     if (_undoState && !_busy) {
@@ -170,17 +87,13 @@ static NSTextField *IPMenuLabel(NSString *text)
         for (IPAdapterSnapshot *adapter in _monitor.adapters) {
             if ([adapter sameConfiguration:_undoState]) {
                 valid = YES;
+                break;
             }
         }
 
         if (!valid) {
-            _undoToken = nil;
-            _undoState = nil;
+            [self forgetUndo];
         }
-    }
-
-    if (self.isViewLoaded) {
-        [self render];
     }
 }
 
@@ -200,115 +113,163 @@ static NSTextField *IPMenuLabel(NSString *text)
     return attachments.count == 1 ? _store.aliases[adapter.mac] : nil;
 }
 
-- (void)render
+- (void)rebuildMenu
 {
-    [self updateAdapterPicker];
-    [self updatePresetButtons];
+    [_menu removeAllItems];
+    NSArray *adapters =
+        [_monitor.adapters sortedArrayWithOptions:NSSortStable usingComparator:^NSComparisonResult(
+            IPAdapterSnapshot *first, IPAdapterSnapshot *second) {
+            if (first.isWiFi == second.isWiFi) {
+                return NSOrderedSame;
+            }
 
-    _approval.hidden = _client.service.status == SMAppServiceStatusEnabled;
-    _dhcp.title = [_selected isAutomatic] ? @"✓ Use DHCP" : @"Use DHCP";
-    _dhcp.enabled = _selected && !_busy;
-
-    [self.view layoutSubtreeIfNeeded];
-    self.preferredContentSize = NSMakeSize(430, ceil(_root.fittingSize.height) + 32);
-    if (self.contentSizeChanged) {
-        self.contentSizeChanged(self.preferredContentSize);
-    }
-}
-
-- (void)updateAdapterPicker
-{
-    [_adapterPicker removeAllItems];
-    [_adapterPicker addItemWithTitle:@"Select an Ethernet adapter…"];
-    for (IPAdapterSnapshot *adapter in _monitor.adapters) {
-        NSString *title = [NSString stringWithFormat:@"%@ — %@ (%@)",
+            return first.isWiFi ? NSOrderedAscending : NSOrderedDescending;
+        }];
+    for (IPAdapterSnapshot *adapter in adapters) {
+        NSString *title = [NSString stringWithFormat:@"%@ (%@)",
             [self aliasFor:adapter] ?: adapter.serviceName,
-            adapter.mac.length ? adapter.mac : @"MAC unavailable",
             adapter.bsdName];
-        [_adapterPicker addItemWithTitle:title];
-        _adapterPicker.lastItem.representedObject = adapter;
-        if ([adapter sameAttachment:_selected]) {
-            [_adapterPicker selectItem:_adapterPicker.lastItem];
+        NSMenuItem *item = [_menu addItemWithTitle:title action:nil keyEquivalent:@""];
+        IPAdapterMenu *submenu = [[IPAdapterMenu alloc] initWithAdapter:adapter
+                                                                presets:_store.presets
+                                                                 target:self];
+        [submenu refreshWithAdapter:adapter busy:_busy];
+        item.submenu = submenu;
+        item.enabled = !_busy;
+    }
+
+    if (!_monitor.adapters.count) {
+        NSMenuItem *empty = [_menu addItemWithTitle:@"No connected adapters" action:nil
+                                      keyEquivalent:@""];
+        empty.enabled = NO;
+    }
+
+    if (_busy) {
+        NSMenuItem *progress = [_menu addItemWithTitle:@"Applying settings…" action:nil
+                                         keyEquivalent:@""];
+        progress.enabled = NO;
+    }
+
+    [_menu addItem:NSMenuItem.separatorItem];
+    if (_client.service.status != SMAppServiceStatusEnabled) {
+        NSMenuItem *approval = [_menu addItemWithTitle:@"Approve Helper…"
+                                                action:@selector(approveHelper:)
+                                         keyEquivalent:@""];
+        approval.target = self;
+    }
+
+    NSMenuItem *manage = [_menu addItemWithTitle:@"Manage Presets…" action:@selector(manage:)
+                                   keyEquivalent:@""];
+    manage.target = self;
+    [_menu addItem:NSMenuItem.separatorItem];
+    NSMenuItem *network = [_menu addItemWithTitle:@"Open Network Settings…"
+                                           action:@selector(openNetworkSettings:)
+                                    keyEquivalent:@""];
+    network.target = self;
+    network.image = [NSImage imageWithSystemSymbolName:@"gearshape"
+                              accessibilityDescription:@"Settings"];
+    NSMenuItem *quit = [_menu addItemWithTitle:@"Quit IP Selector" action:@selector(terminate:)
+                                 keyEquivalent:@"q"];
+    quit.target = NSApp;
+}
+
+- (void)refreshVisibleAdapters
+{
+    // Keep the same rows under the pointer. New adapters appear on the next opening.
+    for (NSMenuItem *item in _menu.itemArray) {
+        if (![item.submenu isKindOfClass:IPAdapterMenu.class]) {
+            continue;
         }
+
+        IPAdapterMenu *submenu = (IPAdapterMenu *)item.submenu;
+        IPAdapterSnapshot *current = nil;
+        for (IPAdapterSnapshot *adapter in _monitor.adapters) {
+            if ([adapter sameAttachment:submenu.adapter]) {
+                current = adapter;
+                break;
+            }
+        }
+
+        item.enabled = current && !_busy;
+        [submenu refreshWithAdapter:current busy:_busy];
     }
-
-    _adapterPicker.enabled = !_busy;
 }
 
-- (void)updatePresetButtons
+- (void)apply:(NSMenuItem *)sender
 {
-    for (NSView *view in _presets.arrangedSubviews.copy) {
-        [_presets removeArrangedSubview:view];
-        [view removeFromSuperview];
+    IPApplyRequest *request = sender.representedObject;
+    if ([request isKindOfClass:IPApplyRequest.class]) {
+        [self applyRequest:request];
     }
-
-    if (!_store.presets.count) {
-        [_presets
-            addArrangedSubview:IPMenuLabel(@"No saved presets. Select Manage Presets to add one.")];
-    }
-
-    for (IPPreset *preset in _store.presets) {
-        IPPresetButton *button =
-            [IPPresetButton buttonWithTitle:[NSString stringWithFormat:@"%@%@ — %@",
-                                                [_selected matchesPreset:preset] ? @"✓ " : @"",
-                                                preset.name,
-                                                preset.address]
-                                     target:self
-                                     action:@selector(applyPreset:)];
-        button.preset = preset;
-        button.alignment = NSTextAlignmentLeft;
-        button.lineBreakMode = NSLineBreakByTruncatingTail;
-        button.toolTip = [NSString stringWithFormat:@"%@ / %@\nGateway: %@\nDNS: %@",
-            preset.address,
-            preset.mask,
-            preset.gateway.length ? preset.gateway : @"None",
-            preset.dns.count ? [preset.dns componentsJoinedByString:@", "] : @"No manual servers"];
-        button.enabled = _selected && !_busy;
-        [_presets addArrangedSubview:button];
-        [button.widthAnchor constraintEqualToAnchor:_presets.widthAnchor constant:-8].active = YES;
-    }
-
-    _presetHeight.constant = MIN(180, MAX(32, _store.presets.count * 32 + 8));
 }
 
-- (void)selectAdapter:(id)sender
+- (BOOL)applyRequest:(IPApplyRequest *)request
 {
-    _selected = _adapterPicker.selectedItem.representedObject;
-    [self render];
-}
-
-- (void)applyPreset:(IPPresetButton *)sender
-{
-    [self applyPreset:sender.preset dhcp:NO];
-}
-
-- (void)useDHCP:(id)sender
-{
-    [self applyPreset:nil dhcp:YES];
-}
-
-- (void)applyPreset:(IPPreset *)preset dhcp:(BOOL)dhcp
-{
-    if (!_selected || _busy) {
-        return;
+    if (_busy) {
+        return NO;
     }
 
     if (_client.service.status != SMAppServiceStatusEnabled) {
         [self approveHelper:nil];
+        return NO;
+    }
+
+    // The helper checks this service and physical attachment again under its lock.
+    _busy = YES;
+    [_client apply:request completion:^(IPApplyResult *result) {
+        if (result.success && request.preset && [result.current matchesPreset:request.preset]) {
+            [self->_history recordAddress:request.preset.address];
+        }
+
+        [self finish:result];
+    }];
+
+    return YES;
+}
+
+- (void)quickChange:(NSMenuItem *)sender
+{
+    if (_busy) {
         return;
     }
 
-    IPApplyRequest *request = [IPApplyRequest new];
-    request.expected = _selected;
-    request.preset = preset;
-    request.useDHCP = dhcp;
+    IPAdapterSnapshot *adapter = sender.representedObject;
+    [_quickChange close];
+    _quickChange = [[IPQuickChangeController alloc] initWithAdapter:adapter history:_history];
+    __weak typeof(self) weakSelf = self;
+    _quickChange.applyPreset = ^BOOL(IPPreset *preset) {
+        return [weakSelf applyQuickPreset:preset toAdapter:adapter];
+    };
+    [NSApp activateIgnoringOtherApps:YES];
+    [_quickChange showWindow:nil];
+    [_quickChange.window makeKeyAndOrderFront:nil];
+}
 
-    _busy = YES;
-    [self render];
+- (BOOL)applyQuickPreset:(IPPreset *)preset toAdapter:(IPAdapterSnapshot *)expected
+{
+    if (_busy) {
+        [self showQuickChangeError:@"Another change is in progress. Wait for it to finish."];
+        return NO;
+    }
 
-    [_client apply:request completion:^(IPApplyResult *result) {
-        [self finish:result];
-    }];
+    IPQuickChangeRequestBuilder *builder = [IPQuickChangeRequestBuilder new];
+    NSError *error = nil;
+    IPApplyRequest *request = [builder requestForPreset:preset adapter:expected error:&error];
+    if (!request) {
+        [self showQuickChangeError:error.localizedDescription];
+        return NO;
+    }
+
+    return [self applyRequest:request];
+}
+
+- (void)showQuickChangeError:(NSString *)message
+{
+    NSAlert *alert = [NSAlert new];
+    alert.messageText = @"Cannot apply this IP address";
+    alert.informativeText = message;
+    [alert addButtonWithTitle:@"OK"];
+    [alert beginSheetModalForWindow:_quickChange.window completionHandler:nil];
 }
 
 - (void)undo:(id)sender
@@ -318,8 +279,6 @@ static NSTextField *IPMenuLabel(NSString *text)
     }
 
     _busy = YES;
-    [self render];
-
     [_client undo:_undoToken completion:^(IPApplyResult *result) {
         [self finish:result];
     }];
@@ -329,23 +288,20 @@ static NSTextField *IPMenuLabel(NSString *text)
 {
     _busy = NO;
     if (result.success) {
-
         // A no-op can preserve an earlier Undo record on another adapter.
         if (![result.undoToken isEqual:_undoToken]) {
             _undoToken = result.undoToken;
             _undoState = result.undoToken ? result.current : nil;
         }
-
-        if ([result.current sameAttachment:_selected]) {
-            _selected = result.current;
-        }
     } else {
-        _undoToken = nil;
-        _undoState = nil;
+        [self forgetUndo];
+    }
+
+    if (_tracking) {
+        [_menu cancelTracking];
     }
 
     [_monitor refresh];
-    [self render];
     if (!result.success) {
         NSAlert *alert = [NSAlert new];
         alert.messageText = @"Network change failed";
@@ -361,9 +317,6 @@ static NSTextField *IPMenuLabel(NSString *text)
 {
     _undoToken = nil;
     _undoState = nil;
-    if (self.isViewLoaded) {
-        [self render];
-    }
 }
 
 - (void)approveHelper:(id)sender
@@ -380,9 +333,22 @@ static NSTextField *IPMenuLabel(NSString *text)
     }
 }
 
+- (void)openNetworkSettings:(id)sender
+{
+    NSURL *url =
+        [NSURL URLWithString:@"x-apple.systempreferences:com.apple.Network-Settings.extension"];
+    if (![NSWorkspace.sharedWorkspace openURL:url]) {
+        NSAlert *alert = [NSAlert new];
+        alert.messageText = @"Cannot open Network Settings";
+        alert.informativeText = @"Open System Settings, then select Network.";
+        [alert addButtonWithTitle:@"OK"];
+        [NSApp activateIgnoringOtherApps:YES];
+        [alert runModal];
+    }
+}
+
 - (void)dealloc
 {
-    [_statusTimer invalidate];
     [NSNotificationCenter.defaultCenter removeObserver:self];
 }
 

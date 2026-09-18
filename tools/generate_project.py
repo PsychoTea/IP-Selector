@@ -301,8 +301,11 @@ class ProjectBuilder:
             self.target(
                 "IPSelectorTests", "bundle.unit-test",
                 shared + [
-                    "App/IPPresetStore.m", "App/IPHelperSetup.m",
-                    "App/IPSettingsController.m", "App/IPPresetListCell.m",
+                    "App/IPPresetStore.m", "App/IPHelperSetup.m", "App/IPMenuController.m",
+                    "App/IPHelperClient.m", "App/IPNetworkMonitor.m",
+                    "App/IPRecentAddresses.m", "App/IPQuickChangeController.m",
+                    "App/IPQuickChangeRequestBuilder.m", "App/IPSettingsController.m",
+                    "App/IPPresetListCell.m", "App/IPAdapterMenu.m",
                 ] + self.source_files("Tests"),
                 ["Cocoa", *network_frameworks, "ServiceManagement", "UniformTypeIdentifiers", "XCTest"],
                 {

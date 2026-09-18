@@ -8,7 +8,7 @@
 
 @implementation IPAppDelegate {
     NSStatusItem *_statusItem;
-    NSPopover *_popover;
+    IPMenuController *_menuController;
     IPPresetStore *_store;
     IPNetworkMonitor *_monitor;
     IPHelperClient *_client;
@@ -60,21 +60,13 @@
         [weakSelf showApproval:nil];
     };
 
-    menu.contentSizeChanged = ^(NSSize size) {
-        [weakSelf resizePopover:size];
-    };
-
-    _popover = [NSPopover new];
-    _popover.behavior = NSPopoverBehaviorTransient;
-    _popover.contentViewController = menu;
-    _popover.contentSize = menu.preferredContentSize;
+    _menuController = menu;
 
     _statusItem = [NSStatusBar.systemStatusBar statusItemWithLength:NSSquareStatusItemLength];
     _statusItem.button.image = [NSImage imageWithSystemSymbolName:@"network"
                                          accessibilityDescription:@"IP Selector"];
     _statusItem.button.toolTip = @"IP Selector";
-    _statusItem.button.target = self;
-    _statusItem.button.action = @selector(toggle:);
+    _statusItem.menu = menu.menu;
 }
 
 - (void)createMainMenu
@@ -111,14 +103,9 @@
     }
 }
 
-- (void)resizePopover:(NSSize)size
-{
-    _popover.contentSize = size;
-}
-
 - (void)showApproval:(NSError *)error
 {
-    [_popover close];
+    [_menuController.menu cancelTracking];
     if (!_approval) {
         _approval = [[IPApprovalController alloc] initWithClient:_client];
     }
@@ -126,20 +113,9 @@
     [_approval showWithError:error];
 }
 
-- (void)toggle:(id)sender
-{
-    if (_popover.shown) {
-        [_popover close];
-    } else {
-        [NSApp activateIgnoringOtherApps:YES];
-        [_popover showRelativeToRect:_statusItem.button.bounds ofView:_statusItem.button
-                       preferredEdge:NSRectEdgeMinY];
-    }
-}
-
 - (void)showSettings
 {
-    [_popover close];
+    [_menuController.menu cancelTracking];
     if (!_settings) {
         _settings = [[IPSettingsController alloc] initWithStore:_store];
     }
@@ -150,7 +126,7 @@
 - (BOOL)applicationShouldHandleReopen:(NSApplication *)sender hasVisibleWindows:(BOOL)flag
 {
     if (!flag) {
-        [self toggle:nil];
+        [_statusItem.button performClick:nil];
     }
 
     return YES;
