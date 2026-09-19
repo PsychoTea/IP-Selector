@@ -103,8 +103,10 @@ static void IPFillStackWidth(NSStackView *stack)
         window.title = [NSString stringWithFormat:@"%@ — Presets and Settings",
             [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleDisplayName"]
                 ?: @"IP Selector"];
-        [window center];
+        window.releasedWhenClosed = NO;
+        window.collectionBehavior = NSWindowCollectionBehaviorMoveToActiveSpace;
         [self build];
+        [window center];
 
         [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(storeChanged:)
                                                    name:IPPresetsChanged
@@ -305,8 +307,26 @@ static void IPFillStackWidth(NSStackView *stack)
 
 - (void)showWindow:(id)sender
 {
+    NSWindow *window = self.window;
+    BOOL onScreen = NO;
+    for (NSScreen *screen in NSScreen.screens) {
+        if (NSIntersectsRect(window.frame, screen.visibleFrame)) {
+            onScreen = YES;
+            break;
+        }
+    }
+
+    if (!onScreen) {
+        [window center];
+    }
+
+    [NSApp activate];
+    if (window.miniaturized) {
+        [window deminiaturize:sender];
+    }
+
     [super showWindow:sender];
-    [NSApp activateIgnoringOtherApps:YES];
+    [window makeKeyAndOrderFront:sender];
 
     [self updateStatus];
 }

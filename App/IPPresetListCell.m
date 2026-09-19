@@ -5,11 +5,12 @@
 - (instancetype)initWithFrame:(NSRect)frame
 {
     if ((self = [super initWithFrame:frame])) {
-        self.textField = [NSTextField labelWithString:@""];
-        self.textField.font = [NSFont systemFontOfSize:13 weight:NSFontWeightSemibold];
+        // NSTableCellView's textField outlet does not retain its value.
+        NSTextField *nameLabel = [NSTextField labelWithString:@""];
+        nameLabel.font = [NSFont systemFontOfSize:13 weight:NSFontWeightSemibold];
         _addressLabel = [NSTextField labelWithString:@""];
         _addressLabel.font = [NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightRegular];
-        for (NSTextField *field in @[self.textField, _addressLabel]) {
+        for (NSTextField *field in @[nameLabel, _addressLabel]) {
             field.lineBreakMode = NSLineBreakByTruncatingTail;
             field.translatesAutoresizingMaskIntoConstraints = NO;
             [self addSubview:field];
@@ -19,6 +20,7 @@
                 = YES;
         }
 
+        self.textField = nameLabel;
         [self.textField.topAnchor constraintEqualToAnchor:self.topAnchor constant:8].active = YES;
         [_addressLabel.topAnchor constraintEqualToAnchor:self.textField.bottomAnchor constant:3]
             .active

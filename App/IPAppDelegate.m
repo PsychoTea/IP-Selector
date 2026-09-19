@@ -116,11 +116,20 @@
 - (void)showSettings
 {
     [_menuController.menu cancelTracking];
-    if (!_settings) {
-        _settings = [[IPSettingsController alloc] initWithStore:_store];
-    }
+    @try {
+        if (!_settings) {
+            _settings = [[IPSettingsController alloc] initWithStore:_store];
+        }
 
-    [_settings showWindow:nil];
+        [_settings showWindow:nil];
+    } @catch (NSException *exception) {
+        NSAlert *alert = [NSAlert new];
+        alert.messageText = @"Cannot open Manage Presets";
+        alert.informativeText = exception.reason ?: @"The preset window could not be opened.";
+        [alert addButtonWithTitle:@"OK"];
+        [NSApp activate];
+        [alert runModal];
+    }
 }
 
 - (BOOL)applicationShouldHandleReopen:(NSApplication *)sender hasVisibleWindows:(BOOL)flag

@@ -1,10 +1,59 @@
 #import "IPTestSupport.h"
 #import "IPSettingsController.h"
+#import "IPPresetListCell.h"
 
 @interface IPSettingsControllerTests : IPTemporaryDirectoryTestCase
 @end
 
 @implementation IPSettingsControllerTests
+
+- (void)testPresetCellOwnsItsLabels
+{
+    [NSApplication sharedApplication];
+    IPPresetListCell *cell;
+    @autoreleasepool {
+        cell = [[IPPresetListCell alloc] initWithFrame:NSMakeRect(0, 0, 250, 52)];
+        cell.textField.stringValue = @"Audio";
+        cell.addressLabel.stringValue = @"192.168.1.20";
+    }
+
+    XCTAssertNotNil(cell.textField);
+    XCTAssertEqual(cell.textField.superview, cell);
+    XCTAssertEqual(cell.addressLabel.superview, cell);
+    XCTAssertEqualObjects(cell.textField.stringValue, @"Audio");
+    XCTAssertEqualObjects(cell.addressLabel.stringValue, @"192.168.1.20");
+}
+
+- (void)testSettingsWindowCanReopenAfterClosing
+{
+    [NSApplication sharedApplication];
+    IPSettingsController *controller = [[IPSettingsController alloc] initWithStore:self.store];
+    NSWindow *window = controller.window;
+    [controller showWindow:nil];
+    XCTAssertTrue(window.visible);
+    [controller close];
+    XCTAssertFalse(window.visible);
+    [controller showWindow:nil];
+    XCTAssertEqual(controller.window, window);
+    XCTAssertTrue(window.visible);
+    [controller close];
+}
+
+- (void)testSettingsWindowReturnsToAnAttachedScreen
+{
+    [NSApplication sharedApplication];
+    IPSettingsController *controller = [[IPSettingsController alloc] initWithStore:self.store];
+    [controller.window setFrameOrigin:NSMakePoint(-100000, -100000)];
+    [controller showWindow:nil];
+    BOOL onScreen = NO;
+    for (NSScreen *screen in NSScreen.screens) {
+        onScreen |= NSIntersectsRect(controller.window.frame, screen.visibleFrame);
+    }
+
+    XCTAssertTrue(onScreen);
+    XCTAssertTrue(controller.window.visible);
+    [controller close];
+}
 
 - (void)testSelectionControlsAndEditorLayout
 {
