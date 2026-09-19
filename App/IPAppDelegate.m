@@ -5,6 +5,7 @@
 #import "IPPresetStore.h"
 #import "IPNetworkMonitor.h"
 #import "IPHelperClient.h"
+#import "IPInstallationCheck.h"
 
 @implementation IPAppDelegate {
     NSStatusItem *_statusItem;
@@ -18,6 +19,11 @@
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification
 {
+    if (!IPCheckApplicationInstallation()) {
+        [NSApp terminate:nil];
+        return;
+    }
+
     [self createServices];
     [self createStatusItem];
     [self createMainMenu];

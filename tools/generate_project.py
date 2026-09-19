@@ -306,6 +306,7 @@ class ProjectBuilder:
                     "App/IPRecentAddresses.m", "App/IPQuickChangeController.m",
                     "App/IPQuickChangeRequestBuilder.m", "App/IPSettingsController.m",
                     "App/IPPresetListCell.m", "App/IPAdapterMenu.m",
+                    "App/IPInstallationCheck.m",
                 ] + self.source_files("Tests"),
                 ["Cocoa", *network_frameworks, "ServiceManagement", "UniformTypeIdentifiers", "XCTest"],
                 {
